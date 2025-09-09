@@ -1,0 +1,59 @@
+from fastapi import FastAPI, Query
+import requests
+import json
+
+app = FastAPI()
+
+# External movie API endpoints
+MOVIES_URL = "https://us-central1-creator-studio-demo.cloudfunctions.net/movies"
+DETAILS_URL = "https://us-central1-creator-studio-demo.cloudfunctions.net/movieDetails"
+HEADERS = {'Authorization': 'Bearer ANY_VALUE'}
+
+def get_all_movies():
+    response = requests.get(MOVIES_URL, headers=HEADERS)
+    return response.json()
+
+def get_movie_details(movie_id: str):
+    payload = json.dumps({"movie_id": movie_id})
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ANY_VALUE'
+    }
+    response = requests.post(DETAILS_URL, headers=headers, data=payload)
+    return response.json()
+
+def convert_minutes_to_hours_and_minutes(minutes):
+    hours = minutes // 60
+    remaining_minutes = minutes % 60
+    if hours == 0:
+        return f"{remaining_minutes}min"
+    elif remaining_minutes == 0:
+        return f"{hours}h"
+    else:
+        return f"{hours}h {remaining_minutes}min"
+
+@app.get("/api/movie-recommendations")
+async def recommendations(genre: str = Query(...), limit: int = Query(5)):
+    try:
+        # 1. Get all movies and filter by genre
+        movies = get_all_movies().get('movies', [])
+        genre_movies = [m for m in movies if m['genre'].lower() == genre.lower()]
+        
+        if not genre_movies:
+            return {"error": "No movies found for that genre."}
+        
+        # 2. Fetch detailed info
+        movie_details = [get_movie_details(m['id']) for m in genre_movies]
+
+        # 3. Calculate total and average ratings
+        total_runtime = sum(m['run_time_minutes'] for m in movie_details)
+        avg_rating = sum(m['rating'] for m in movie_details) / len(movie_details)
+
+        # 4. Format final result
+        movie_response = [{
+            "title": m['title'],
+            "genre": genre.lower(),
+            "rating": round(m['rating'], 1),
+            "relative_rating": round(m['rating'] - avg_rating, 1),
+            "release_year": m['release_year'],
+            "r
